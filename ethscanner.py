@@ -20,19 +20,23 @@ def private_to_address(private_hex):
     ripemd160_public_key = hashlib.new('ripemd160', sha256_public_key).digest()
     return '0x' + ripemd160_public_key.hex()
 
-# --- بررسی موجودی با blockchain.info ---
+# --- بررسی موجودی با Etherscan ---
 def check_balance(address):
     try:
+        etherscan_api_key = "AG1KPAJGQYTXQX8BCBWDR4EJZBW8AHKAYW"  # کلید API شما
         response = requests.get(
-            f"https://blockchain.info/balance?active={address}",
+            f"https://api.etherscan.io/api?module=account&action=balance&address={address}&tag=latest&apikey={etherscan_api_key}",
             timeout=10,
             headers={'User-Agent': 'Mozilla/5.0'}
         )
         response.raise_for_status()  # بررسی خطاهای HTTP
-        balance = response.json().get(address, {}).get('final_balance', 0)
-        return balance / 10**8  # تبدیل از Satoshi به BTC (اگر API از BTC استفاده کند)
+        result = response.json().get('result')
+        if result == "Invalid API Key":
+            return "Etherscan Error: Invalid API Key"
+        balance = int(result)
+        return balance / 10**18  # تبدیل از Wei به Ether
     except requests.exceptions.RequestException as e:
-        return f"Error: {e}"
+        return f"Etherscan Error: {e}"
 
 # --- اجرای اصلی ---
 def main():
