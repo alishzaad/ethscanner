@@ -21,20 +21,7 @@ def private_to_address(private_hex):
     ripemd160_public_key = hashlib.new('ripemd160', sha256_public_key).digest()
     return '0x' + ripemd160_public_key.hex()
 
-# --- بررسی موجودی با دو API ---
-def check_balance_etherscan(address):
-    try:
-        response = requests.get(
-            f"https://api.etherscan.io/api?module=account&action=balance&address={address}&tag=latest",
-            timeout=10,
-            headers={'User-Agent': 'Mozilla/5.0'}
-        )
-        response.raise_for_status()  # بررسی خطاهای HTTP
-        balance = int(response.json().get('result', 0))
-        return balance / 10**18  # تبدیل از Wei به Ether
-    except requests.exceptions.RequestException as e:
-        return f"Etherscan Error: {e}"
-
+# --- بررسی موجودی با Infura ---
 def check_balance_infura(address):
     try:
         infura_url = "https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID"  # جایگزین کنید با Project ID خودتان
@@ -51,15 +38,34 @@ def check_balance_infura(address):
     except requests.exceptions.RequestException as e:
         return f"Infura Error: {e}"
 
+# --- بررسی موجودی با Etherscan (اختیاری) ---
+def check_balance_etherscan(address):
+    try:
+        etherscan_api_key = "YOUR_ETHERSCAN_API_KEY"  # جایگزین کنید با API Key خودتان
+        response = requests.get(
+            f"https://api.etherscan.io/api?module=account&action=balance&address={address}&tag=latest&apikey={etherscan_api_key}",
+            timeout=10,
+            headers={'User-Agent': 'Mozilla/5.0'}
+        )
+        response.raise_for_status()
+        result = response.json().get('result')
+        if result == "Invalid API Key":
+            return "Etherscan Error: Invalid API Key"
+        balance = int(result)
+        return balance / 10**18  # تبدیل از Wei به Ether
+    except requests.exceptions.RequestException as e:
+        return f"Etherscan Error: {e}"
+
 def check_balance(address):
-    # استفاده از هر دو API
-    etherscan_balance = check_balance_etherscan(address)
-    if isinstance(etherscan_balance, (int, float)):
-        return etherscan_balance
+    # اول از Infura استفاده می‌کنیم
     infura_balance = check_balance_infura(address)
     if isinstance(infura_balance, (int, float)):
         return infura_balance
-    return f"{etherscan_balance} | {infura_balance}"
+    # اگر Infura خطا داد، از Etherscan استفاده می‌کنیم
+    etherscan_balance = check_balance_etherscan(address)
+    if isinstance(etherscan_balance, (int, float)):
+        return etherscan_balance
+    return f"{infura_balance} | {etherscan_balance}"
 
 # --- اجرای اصلی ---
 def main():
