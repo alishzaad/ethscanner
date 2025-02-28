@@ -4,7 +4,6 @@ import ecdsa
 import requests
 import sys
 from termcolor import colored
-from concurrent.futures import ThreadPoolExecutor
 
 # --- توابع تولید آدرس‌ها ---
 def generate_private_key():
@@ -21,51 +20,19 @@ def private_to_address(private_hex):
     ripemd160_public_key = hashlib.new('ripemd160', sha256_public_key).digest()
     return '0x' + ripemd160_public_key.hex()
 
-# --- بررسی موجودی با Infura ---
-def check_balance_infura(address):
+# --- بررسی موجودی با blockchain.info ---
+def check_balance(address):
     try:
-        infura_url = "https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID"  # جایگزین کنید با Project ID خودتان
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "eth_getBalance",
-            "params": [address, "latest"],
-            "id": 1
-        }
-        response = requests.post(infura_url, json=payload, timeout=10)
-        response.raise_for_status()
-        balance_hex = response.json().get('result', '0x0')
-        return int(balance_hex, 16) / 10**18  # تبدیل از Wei به Ether
-    except requests.exceptions.RequestException as e:
-        return f"Infura Error: {e}"
-
-# --- بررسی موجودی با Etherscan (اختیاری) ---
-def check_balance_etherscan(address):
-    try:
-        etherscan_api_key = "YOUR_ETHERSCAN_API_KEY"  # جایگزین کنید با API Key خودتان
         response = requests.get(
-            f"https://api.etherscan.io/api?module=account&action=balance&address={address}&tag=latest&apikey={etherscan_api_key}",
+            f"https://blockchain.info/balance?active={address}",
             timeout=10,
             headers={'User-Agent': 'Mozilla/5.0'}
         )
-        response.raise_for_status()
-        result = response.json().get('result')
-        if result == "Invalid API Key":
-            return "Etherscan Error: Invalid API Key"
-        balance = int(result)
-        return balance / 10**18  # تبدیل از Wei به Ether
+        response.raise_for_status()  # بررسی خطاهای HTTP
+        balance = response.json().get(address, {}).get('final_balance', 0)
+        return balance / 10**8  # تبدیل از Satoshi به BTC (اگر API از BTC استفاده کند)
     except requests.exceptions.RequestException as e:
-        return f"Etherscan Error: {e}"
-
-def check_balance(address):
-    # اول از Infura استفاده می‌کنیم
-    infura_balance = check_balance_infura(address)
-    if isinstance(infura_balance, (int, float)):
-        return infura_balance
-    # اگر Infura خطا داد، از Etherscan استفاده می‌کنیم
-    etherscan_balance = check_balance_etherscan(address)
-    if isinstance(etherscan_balance, (int, float)):
-        return etherscan_balance
-    return f"{infura_balance} | {etherscan_balance}"
+        return f"Error: {e}"
 
 # --- اجرای اصلی ---
 def main():
