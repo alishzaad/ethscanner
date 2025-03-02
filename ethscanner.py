@@ -3,7 +3,10 @@ import hashlib
 import ecdsa
 import requests
 import sys
+import time
+import threading
 from termcolor import colored
+from concurrent.futures import ThreadPoolExecutor
 
 # --- توابع تولید آدرس‌ها ---
 def generate_private_key():
@@ -38,43 +41,52 @@ def check_balance(address):
     except requests.exceptions.RequestException as e:
         return f"Etherscan Error: {e}"
 
+# --- شمارنده و قفل برای هماهنگی در چاپ ---
+counter = 0
+counter_lock = threading.Lock()
+
+# --- تابع پردازش هر آدرس ---
+def process_address():
+    global counter
+    private_hex = generate_private_key()
+    address = private_to_address(private_hex)
+    balance = check_balance(address)
+    
+    with counter_lock:
+        counter += 1
+        current_count = counter
+
+    # آماده‌سازی رشته خروجی
+    if isinstance(balance, (int, float)):
+        balance_str = f"{balance} ETH"
+    else:
+        balance_str = colored(balance, 'red')
+    
+    # چاپ نتیجه بررسی (آدرس‌های قبلی پاک نمی‌شوند)
+    print(f"#{current_count} | Private Key: {private_hex} | Address: {address} | Balance: {balance_str}")
+
+    # در صورت یافتن موجودی مثبت، اطلاعات را ذخیره و برنامه را خاتمه می‌دهد
+    if isinstance(balance, (int, float)) and balance > 0:
+        print("\n\n!!! موجودی یافت شد !!!")
+        print(f"کلید خصوصی (Hex): {private_hex}")
+        print(f"آدرس: {address}")
+        print(f"موجودی: {balance} ETH")
+        with open('found_eth.txt', 'a') as f:
+            f.write(f"Private Key (Hex): {private_hex}\n")
+            f.write(f"Address: {address}\n")
+            f.write(f"موجودی: {balance} ETH\n\n")
+        sys.exit(0)
+
 # --- اجرای اصلی ---
 def main():
     try:
-        while True:
-            private_hex = generate_private_key()
-            address = private_to_address(private_hex)
-            
-            # بررسی موجودی
-            balance = check_balance(address)
-            
-            # نمایش اطلاعات در ترمینال
-            sys.stdout.write("\033[K")  # پاک کردن خط قبلی
-            status = f"Private Key: {private_hex} | Address: {address[:10]}... | Balance: "
-            if isinstance(balance, (int, float)):
-                status += f"{balance} ETH"
-            else:
-                status += colored(balance, 'red')  # نمایش خطا با رنگ قرمز
-            print(f"\r{status}", end="", flush=True)
-            
-            # بررسی موجودی و خطاها
-            if isinstance(balance, (int, float)) and balance > 0:
-                print("\n\n!!! موجودی یافت شد !!!")
-                print(f"کلید خصوصی (Hex): {private_hex}")
-                print(f"آدرس: {address}")
-                print(f"موجودی: {balance} ETH")
-                
-                # ذخیره اطلاعات در فایل
-                with open('found_eth.txt', 'a') as f:
-                    f.write(f"Private Key (Hex): {private_hex}\n")
-                    f.write(f"Address: {address}\n")
-                    f.write(f"Balance: {balance} ETH\n\n")
-                sys.exit(0)
-            elif isinstance(balance, str):  # نمایش خطاها
-                print(f"\n\n!!! خطا !!!")
-                print(f"آدرس: {address}")
-                print(colored(f"خطا: {balance}", 'red'))
-                
+        # استفاده از ThreadPoolExecutor با تعداد بیشینه نخ‌ها
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            while True:
+                # در هر ثانیه ۵ وظیفه (تسک) به صورت همزمان اجرا می‌شود
+                for _ in range(5):
+                    executor.submit(process_address)
+                time.sleep(1)
     except KeyboardInterrupt:
         print("\n\nعملیات توسط کاربر لغو شد.")
 
